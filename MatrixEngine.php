@@ -50,8 +50,11 @@ class MatrixEngine {
             }
         }
 
-        // Return rootNodeId as fallback
-        return $rootNodeId;
+        // Global fallback: find any node in matrix with < 3 children
+        $stmt = $this->pdo->query("SELECT id FROM matrix_nodes WHERE (SELECT COUNT(*) FROM matrix_nodes c WHERE c.parent_node_id = matrix_nodes.id) < 3 ORDER BY id ASC LIMIT 1");
+        $fallbackId = $stmt->fetchColumn();
+
+        return $fallbackId ? (int)$fallbackId : $rootNodeId;
     }
 
     /**
@@ -79,33 +82,37 @@ class MatrixEngine {
         $parentNodeId = null;
         $level = 1;
 
-        if ($referrerId) {
-            // Find referrer's primary matrix node
-            $stmt = $this->pdo->prepare("SELECT id, level FROM matrix_nodes WHERE user_id = ? ORDER BY id ASC LIMIT 1");
-            $stmt->execute([$referrerId]);
-            $refNode = $stmt->fetch();
+        // Check if any node exists in matrix tree
+        $stmt = $this->pdo->prepare("SELECT id FROM matrix_nodes WHERE parent_node_id IS NULL ORDER BY id ASC LIMIT 1");
+        $stmt->execute();
+        $globalRootNode = $stmt->fetch();
 
-            if ($refNode) {
-                $rootNodeId = (int)$refNode['id'];
-                $parentNodeId = $this->findFirstAvailableNode($rootNodeId);
+        if ($globalRootNode) {
+            $rootNodeId = (int)$globalRootNode['id'];
 
-                $stmt = $this->pdo->prepare("SELECT level FROM matrix_nodes WHERE id = ?");
-                $stmt->execute([$parentNodeId]);
-                $parentLevel = (int)$stmt->fetchColumn();
-                $level = $parentLevel + 1;
+            if ($referrerId) {
+                // Find referrer's primary matrix node
+                $stmt = $this->pdo->prepare("SELECT id, level FROM matrix_nodes WHERE user_id = ? ORDER BY id ASC LIMIT 1");
+                $stmt->execute([$referrerId]);
+                $refNode = $stmt->fetch();
+                if ($refNode) {
+                    $rootNodeId = (int)$refNode['id'];
+                }
+            } elseif ($isRebirth) {
+                // For rebirth, start search from user's primary matrix node
+                $stmt = $this->pdo->prepare("SELECT id, level FROM matrix_nodes WHERE user_id = ? ORDER BY id ASC LIMIT 1");
+                $stmt->execute([$userId]);
+                $userNode = $stmt->fetch();
+                if ($userNode) {
+                    $rootNodeId = (int)$userNode['id'];
+                }
             }
-        } else {
-            // If no referrer, assign under global root if one exists
-            $stmt = $this->pdo->prepare("SELECT id, level FROM matrix_nodes WHERE parent_node_id IS NULL ORDER BY id ASC LIMIT 1");
-            $stmt->execute();
-            $rootNode = $stmt->fetch();
-            if ($rootNode && (int)$rootNode['id'] > 0 && (int)$rootNode['id'] !== $userId) {
-                $parentNodeId = $this->findFirstAvailableNode((int)$rootNode['id']);
-                $stmt = $this->pdo->prepare("SELECT level FROM matrix_nodes WHERE id = ?");
-                $stmt->execute([$parentNodeId]);
-                $parentLevel = (int)$stmt->fetchColumn();
-                $level = $parentLevel + 1;
-            }
+
+            $parentNodeId = $this->findFirstAvailableNode($rootNodeId);
+            $stmt = $this->pdo->prepare("SELECT level FROM matrix_nodes WHERE id = ?");
+            $stmt->execute([$parentNodeId]);
+            $parentLevel = (int)$stmt->fetchColumn();
+            $level = $parentLevel + 1;
         }
 
         // Insert new matrix node for the user (or rebirth position)

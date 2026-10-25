@@ -105,23 +105,20 @@ $stats = $vaultEngine->getSystemFinancialStats();
                 </div>
             <?php endfor; ?>
 
-            <h3>Progression Pools Calibration</h3>
-            <div class="form-group">
-                <label>Pool 50 Depth 1 Payout (USDT)</label>
-                <input type="text" name="pool_50_d1_payout" value="<?= htmlspecialchars($configs['pool_50_d1_payout'] ?? '10.00') ?>">
-            </div>
-            <div class="form-group">
-                <label>Pool 50 Depth 2 Payout (USDT)</label>
-                <input type="text" name="pool_50_d2_payout" value="<?= htmlspecialchars($configs['pool_50_d2_payout'] ?? '30.00') ?>">
-            </div>
-            <div class="form-group">
-                <label>Pool 100 Depth 1 Payout (USDT)</label>
-                <input type="text" name="pool_100_d1_payout" value="<?= htmlspecialchars($configs['pool_100_d1_payout'] ?? '20.00') ?>">
-            </div>
-            <div class="form-group">
-                <label>Pool 100 Depth 2 Payout (USDT)</label>
-                <input type="text" name="pool_100_d2_payout" value="<?= htmlspecialchars($configs['pool_100_d2_payout'] ?? '60.00') ?>">
-            </div>
+            <h3>Progression Pools Calibration (5, 10, 30, 50, 100, 200 USDT Pools)</h3>
+            <?php
+            $poolTiers = [5, 10, 30, 50, 100, 200];
+            foreach ($poolTiers as $pt):
+            ?>
+                <div class="form-group">
+                    <label>Pool <?= $pt ?> Depth 1 Payout (USDT)</label>
+                    <input type="text" name="pool_<?= $pt ?>_d1_payout" value="<?= htmlspecialchars($configs["pool_{$pt}_d1_payout"] ?? '1.00') ?>">
+                </div>
+                <div class="form-group">
+                    <label>Pool <?= $pt ?> Depth 2 Payout (USDT)</label>
+                    <input type="text" name="pool_<?= $pt ?>_d2_payout" value="<?= htmlspecialchars($configs["pool_{$pt}_d2_payout"] ?? '3.00') ?>">
+                </div>
+            <?php endforeach; ?>
 
             <button type="submit" name="save_config" class="btn" style="margin-top: 15px;">Save & Apply Settings</button>
         </form>

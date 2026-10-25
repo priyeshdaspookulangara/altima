@@ -72,18 +72,19 @@ $adminConfig->setConfig('matrix_level_payout_3', '5.00');
 assert($adminConfig->getConfig('matrix_level_payout_3') == '5.00', "Config updated successfully");
 echo "-> PASS: Admin parameter successfully updated dynamically.\n\n";
 
-// Test 6: Progression Pool Graduation and 3x2 BFS Placement
-echo "[TEST 6] Testing Graduation into 50 USDT Progression Pool and 3x2 BFS Placement...\n";
-$poolEngine->enterPool(1, 'POOL_50'); // Root enters Pool 50
-$poolEngine->enterPool(2, 'POOL_50'); // User 1 enters Pool 50
-$poolEngine->enterPool(3, 'POOL_50'); // User 2 enters Pool 50
+// Test 6: Entry Progression Pool (POOL_5) and 3x2 BFS Placement
+echo "[TEST 6] Testing Graduation into Entry Pool (5 USDT Pool) and 3x2 BFS Placement...\n";
+$poolEngine->enterPool(1, 'POOL_5'); // Root enters Pool 5
+$poolEngine->enterPool(2, 'POOL_5'); // User 1 enters Pool 5
+$poolEngine->enterPool(3, 'POOL_5'); // User 2 enters Pool 5
 
 $rootPool = $userModel->getById(1);
 echo "Root Pool Tier: " . $rootPool['current_pool_tier'] . "\n";
 echo "Root Withdrawable Balance after pool children: $" . $rootPool['withdrawable_balance'] . " USDT\n";
-assert($rootPool['current_pool_tier'] == 'POOL_50', "Root should now be in POOL_50");
-assert($rootPool['withdrawable_balance'] == 58.00, "Root withdrawable balance updated with pool depth 1 rewards ($36 base + $2 rebirth matrix payout + $20 pool payouts)");
-echo "-> PASS: Progression pool 3x2 BFS placement and depth payouts verified.\n\n";
+assert($rootPool['current_pool_tier'] == 'POOL_5', "Root should now be in POOL_5");
+// Root gets $1.00 Depth 1 payout x 2 = $2.00
+assert($rootPool['withdrawable_balance'] == 40.00, "Root withdrawable balance updated with pool 5 depth 1 rewards ($36 base + $2 rebirth matrix payout + $2 pool payouts)");
+echo "-> PASS: Entry pool (5 USDT Pool) 3x2 BFS placement and depth payouts verified.\n\n";
 
 // Test 7: System-wide Financial Audit & Zero Corporate Fee Check
 echo "[TEST 7] Auditing System Financial Ledger...\n";

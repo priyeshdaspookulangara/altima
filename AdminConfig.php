@@ -30,7 +30,16 @@ class AdminConfig {
             'matrix_rebirth_deduction_5' => '30.00',
             'matrix_rebirth_deduction_6' => '50.00',
             'matrix_rebirth_deduction_7' => '100.00',
-            // Progression Pool Configs
+            // Progression Pool Configs (5, 10, 30, 50, 100, 200 USDT)
+            'pool_5_entry' => '5.00',
+            'pool_5_d1_payout' => '1.00',
+            'pool_5_d2_payout' => '3.00',
+            'pool_10_entry' => '10.00',
+            'pool_10_d1_payout' => '2.00',
+            'pool_10_d2_payout' => '6.00',
+            'pool_30_entry' => '30.00',
+            'pool_30_d1_payout' => '6.00',
+            'pool_30_d2_payout' => '18.00',
             'pool_50_entry' => '50.00',
             'pool_50_d1_payout' => '10.00',
             'pool_50_d2_payout' => '30.00',

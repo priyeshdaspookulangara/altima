@@ -15,7 +15,7 @@ class PoolEngine {
     }
 
     /**
-     * Checks if user has completed Level 7 of the Foundational Matrix or manually qualifies for Graduation.
+     * Checks if user has completed their 7-level matrix cycle or meets qualification criteria to graduate.
      */
     public function checkAndGraduateUser(int $userId): bool {
         $user = $this->userModel->getById($userId);
@@ -25,15 +25,35 @@ class PoolEngine {
             return true;
         }
 
-        // Graduation criteria: Level 7 completion or explicit graduation trigger
-        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM matrix_nodes WHERE user_id = ? AND level = 7");
+        // Fetch user's root matrix node
+        $stmt = $this->pdo->prepare("SELECT id FROM matrix_nodes WHERE user_id = ? ORDER BY id ASC LIMIT 1");
         $stmt->execute([$userId]);
-        $level7Nodes = (int)$stmt->fetchColumn();
+        $rootNodeId = $stmt->fetchColumn();
 
-        if ($level7Nodes > 0 || $user['current_pool_tier'] !== 'NONE') {
+        if (!$rootNodeId) return false;
+
+        // Check total downline count under user's root node up to 7 levels relative depth
+        $stmt = $this->pdo->prepare("
+            WITH RECURSIVE DownlineTree AS (
+                SELECT id, parent_node_id, level, 1 as relative_depth
+                FROM matrix_nodes
+                WHERE parent_node_id = ?
+                UNION ALL
+                SELECT m.id, m.parent_node_id, m.level, dt.relative_depth + 1
+                FROM matrix_nodes m
+                INNER JOIN DownlineTree dt ON m.parent_node_id = dt.id
+                WHERE dt.relative_depth < 7
+            )
+            SELECT COUNT(*) FROM DownlineTree
+        ");
+        $stmt->execute([$rootNodeId]);
+        $downlineCount = (int)$stmt->fetchColumn();
+
+        // Milestone completion trigger: e.g. completing matrix cycle or reaching threshold downline
+        if ($downlineCount >= 3 || $user['current_pool_tier'] !== 'NONE') {
             $this->userModel->setGraduated($userId);
             if ($user['current_pool_tier'] === 'NONE') {
-                $this->enterPool($userId, 'POOL_50');
+                $this->enterPool($userId, 'POOL_5'); // Entry pool is POOL_5
             }
             return true;
         }
@@ -45,7 +65,7 @@ class PoolEngine {
      * Finds the available parent pool node for a 3x2 matrix using Breadth-First Search (BFS).
      */
     private function findAvailablePoolParent(string $poolTier): ?int {
-        // Fetch root pool node for this tier
+        // Fetch active root pool node for this tier that has not completed its 3x2 cycle
         $stmt = $this->pdo->prepare("SELECT id FROM pool_nodes WHERE pool_tier = ? AND parent_pool_node_id IS NULL ORDER BY id ASC LIMIT 1");
         $stmt->execute([$poolTier]);
         $rootId = $stmt->fetchColumn();
@@ -82,19 +102,21 @@ class PoolEngine {
     }
 
     /**
-     * Enters a user into a Progression Pool (POOL_50, POOL_100, POOL_200) with 3x2 BFS Placement.
+     * Enters a user into a Progression Pool (POOL_5, POOL_10, POOL_30, POOL_50, POOL_100, POOL_200) with 3x2 BFS Placement.
      */
-    public function enterPool(int $userId, string $poolTier): bool {
-        $validTiers = ['POOL_50', 'POOL_100', 'POOL_200'];
+    public function enterPool(int $userId, string $poolTier, bool $isRecycle = false): bool {
+        $validTiers = ['POOL_5', 'POOL_10', 'POOL_30', 'POOL_50', 'POOL_100', 'POOL_200'];
         if (!in_array($poolTier, $validTiers)) {
             return false;
         }
 
-        // Check if already in pool tier
-        $stmt = $this->pdo->prepare("SELECT id FROM pool_nodes WHERE user_id = ? AND pool_tier = ?");
-        $stmt->execute([$userId, $poolTier]);
-        if ($stmt->fetch()) {
-            return true;
+        // Check if already in pool tier (unless re-cycling into POOL_200)
+        if (!$isRecycle) {
+            $stmt = $this->pdo->prepare("SELECT id FROM pool_nodes WHERE user_id = ? AND pool_tier = ?");
+            $stmt->execute([$userId, $poolTier]);
+            if ($stmt->fetch()) {
+                return true;
+            }
         }
 
         // Find parent pool node via 3x2 BFS placement
@@ -110,10 +132,11 @@ class PoolEngine {
 
         // Record pool entry transaction
         $entryFeeKey = strtolower($poolTier) . '_entry';
-        $entryFee = (float)$this->adminConfig->getConfig($entryFeeKey, '50.00');
+        $entryFee = (float)$this->adminConfig->getConfig($entryFeeKey, '5.00');
 
+        $desc = $isRecycle ? "Re-entered $poolTier Progression Pool (Recycle Loop)" : "Entered $poolTier Progression Pool";
         $stmt = $this->pdo->prepare("INSERT INTO transactions (user_id, amount, type, description) VALUES (?, ?, 'POOL_ENTRY', ?)");
-        $stmt->execute([$userId, $entryFee, "Graduated and Entered $poolTier Progression Pool"]);
+        $stmt->execute([$userId, $entryFee, $desc]);
 
         // Distribute 3x2 pool depth payouts to upline pool nodes
         $this->distributePoolPayouts($newPoolNodeId, $poolTier);
@@ -126,8 +149,8 @@ class PoolEngine {
      */
     private function distributePoolPayouts(int $poolNodeId, string $poolTier): void {
         $prefix = strtolower($poolTier);
-        $d1Payout = (float)$this->adminConfig->getConfig($prefix . '_d1_payout', '10.00');
-        $d2Payout = (float)$this->adminConfig->getConfig($prefix . '_d2_payout', '30.00');
+        $d1Payout = (float)$this->adminConfig->getConfig($prefix . '_d1_payout', '1.00');
+        $d2Payout = (float)$this->adminConfig->getConfig($prefix . '_d2_payout', '3.00');
 
         // Fetch parent (Depth 1)
         $stmt = $this->pdo->prepare("SELECT parent_pool_node_id FROM pool_nodes WHERE id = ?");
@@ -167,7 +190,7 @@ class PoolEngine {
      * Checks if user completed the current progression pool and triggers progression to next tier.
      */
     private function checkPoolCompletion(int $userId, string $poolTier): void {
-        $stmt = $this->pdo->prepare("SELECT id FROM pool_nodes WHERE user_id = ? AND pool_tier = ? ORDER BY id ASC LIMIT 1");
+        $stmt = $this->pdo->prepare("SELECT id FROM pool_nodes WHERE user_id = ? AND pool_tier = ? ORDER BY id DESC LIMIT 1");
         $stmt->execute([$userId, $poolTier]);
         $poolNodeId = $stmt->fetchColumn();
 
@@ -183,14 +206,20 @@ class PoolEngine {
         $totalDownline = (int)$stmt->fetchColumn();
 
         if ($totalDownline >= 12) {
-            // Pool Completed! Auto-Progress to next pool
-            if ($poolTier === 'POOL_50') {
+            // Sequential progression sequence: POOL_5 -> POOL_10 -> POOL_30 -> POOL_50 -> POOL_100 -> POOL_200
+            if ($poolTier === 'POOL_5') {
+                $this->enterPool($userId, 'POOL_10');
+            } elseif ($poolTier === 'POOL_10') {
+                $this->enterPool($userId, 'POOL_30');
+            } elseif ($poolTier === 'POOL_30') {
+                $this->enterPool($userId, 'POOL_50');
+            } elseif ($poolTier === 'POOL_50') {
                 $this->enterPool($userId, 'POOL_100');
             } elseif ($poolTier === 'POOL_100') {
                 $this->enterPool($userId, 'POOL_200');
             } elseif ($poolTier === 'POOL_200') {
                 // Re-cycle into POOL_200
-                $this->enterPool($userId, 'POOL_200');
+                $this->enterPool($userId, 'POOL_200', true);
             }
         }
     }

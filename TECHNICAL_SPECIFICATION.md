@@ -5,7 +5,7 @@
 
 ### Executive Overview
 
-**Altima** is a decentralized, peer-to-peer (P2P) direct-selling referral ecosystem built on the Binance Smart Chain (BSC - BEP-20 standard). It utilizes a dynamic administrative architecture powering a forced 3x3 Breadth-First Search (BFS) spillover matrix and a multi-tiered cyclical progression pool system (50 USDT, 100 USDT, and 200 USDT pools).
+**Altima** is a decentralized, peer-to-peer (P2P) direct-selling referral ecosystem built on the Binance Smart Chain (BSC - BEP-20 standard). It utilizes a dynamic administrative architecture powering a forced 3x3 Breadth-First Search (BFS) spillover matrix and a multi-tiered cyclical progression pool sequence starting with the entry **5 USDT Pool** followed by **10 USDT, 30 USDT, 50 USDT, 100 USDT, and 200 USDT pools**.
 
 This document outlines the end-to-end technical specification, smart contract state structures, placement algorithms, financial ledger equations, and state machine transition rules for Altima.
 
@@ -19,7 +19,7 @@ The system is modularly organized into five core smart contract modules:
 1. `AltimaGovernance.sol`: Handles administrative governance, access control, and dynamic parameter configuration.
 2. `AltimaCore.sol`: Coordinates registration, direct referrals, and user identity mappings.
 3. `MatrixEngine.sol`: Executes the forced 3x3 BFS spillover placement algorithm across 7 levels.
-4. `PoolEngine.sol`: Manages cyclical progression pools (50 USDT, 100 USDT, 200 USDT).
+4. `PoolEngine.sol`: Manages cyclical progression pools (5, 10, 30, 50, 100, 200 USDT).
 5. `VaultEngine.sol`: Handles P2P fund routing, instant direct wallet transfers, and rebirth funding pools with 0% corporate retention.
 
 ```
@@ -37,7 +37,7 @@ The system is modularly organized into five core smart contract modules:
                   v                                 v
 +-----------------+-----------------+     +---------+-------------------+
 |          MatrixEngine             |     |           PoolEngine            |
-|  (3x3 BFS Spillover across 7 Lvs) |     | (Progression Pools: 50/100/200)   |
+|  (3x3 BFS Spillover across 7 Lvs) |     | (Progression Pools: 5..200 USDT)  |
 +-----------------+-----------------+     +---------+-------------------+
                   |                                 |
                   +-----------------+---------------+
@@ -58,7 +58,7 @@ The administrator possesses dynamic control to calibrate reward structures durin
 #### Admin-Configurable Variables:
 - **`directBonusSchedule`**: Direct referral payouts per direct signup or milestone achievement (e.g., 3 direct signups = 30 USDT fee recovery).
 - **`matrixLevelRewards[7]`**: Depth payout amounts/percentages for matrix Levels 1 through 7 in the 30 USDT foundational matrix.
-- **`poolConfig[3]`**: Parameters for Progression Pools (50 USDT, 100 USDT, 200 USDT), including depth payouts, node capacities, and graduation thresholds.
+- **`poolConfig[6]`**: Parameters for Progression Pools (5 USDT, 10 USDT, 30 USDT, 50 USDT, 100 USDT, 200 USDT), including depth payouts, node capacities, and graduation thresholds.
 - **`rebirthThresholds`**: Milestone payout/level triggers that automatically allocate liquidity into parallel rebirth nodes.
 
 ---
@@ -75,7 +75,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract AltimaStorage is Ownable, ReentrancyGuard {
 
-    enum PoolTier { NONE, POOL_50, POOL_100, POOL_200 }
+    enum PoolTier { NONE, POOL_5, POOL_10, POOL_30, POOL_50, POOL_100, POOL_200 }
 
     struct User {
         uint256 id;
@@ -104,10 +104,10 @@ contract AltimaStorage is Ownable, ReentrancyGuard {
     }
 
     struct PoolConfig {
-        uint256 entryFee;         // 50, 100, or 200 USDT
-        uint256 maxDepth;         // Pool matrix depth (e.g., 2 or 3)
-        uint256 nodePayout;       // Reward per node fill in pool
-        uint256 graduationBonus; // Bonus upon cycle completion
+        uint256 entryFee;         // 5, 10, 30, 50, 100, or 200 USDT
+        uint256 maxDepth;         // Pool matrix depth (3x2)
+        uint256 d1Payout;         // Depth 1 payout
+        uint256 d2Payout;         // Depth 2 payout
     }
 
     // State Mappings
@@ -183,121 +183,11 @@ When a user joins or triggers a rebirth, the placement engine conducts a **Bread
 
 ---
 
-### 2.2 Algorithm Pseudocode
-
-```python
-def find_first_available_node(root_node_id):
-    """
-    Executes Level-Order Breadth-First Search (BFS) to find the leftmost
-    node with an available child slot (< 3 children) within 7 levels depth.
-    """
-    queue = [root_node_id]
-
-    while len(queue) > 0:
-        current_node_id = queue.pop(0)
-        current_node = matrixNodes[current_node_id]
-
-        # Check if node has available slot
-        if len(current_node.childNodeIds) < 3:
-            return current_node_id
-
-        # Add children to queue for level-by-level evaluation
-        for child_id in current_node.childNodeIds:
-            # Depth restriction check: level cannot exceed 7
-            if matrixNodes[child_id].level < 7:
-                queue.append(child_id)
-
-    raise Exception("Matrix branch fully saturated (3,279 positions filled)")
-
-def place_matrix_node(user_address, referrer_address):
-    referrer_root = get_primary_node(referrer_address)
-    target_parent_id = find_first_available_node(referrer_root)
-
-    # Instantiate new node
-    new_node_id = generate_next_node_id()
-    parent_node = matrixNodes[target_parent_id]
-    new_level = parent_node.level + 1
-
-    new_node = MatrixNode(
-        nodeId=new_node_id,
-        owner=user_address,
-        parentNodeId=target_parent_id,
-        childNodeIds=[],
-        level=new_level
-    )
-
-    matrixNodes[new_node_id] = new_node
-    parent_node.childNodeIds.append(new_node_id)
-
-    # Trigger P2P upline distribution across 7 levels
-    distribute_matrix_depth_payouts(new_node_id)
-    return new_node_id
-```
-
----
-
-### 2.3 On-Chain Gas Optimization Strategy
-
-To maintain EVM efficiency and prevent unbounded loops during queue traversal:
-1. **BFS Queue Window Limit:** On-chain BFS search is bounded to a maximum breadth pointer array per level.
-2. **Pointer Mapping:** Maintaining `mapping(uint256 => uint256) public nextAvailableChildPointer` allows $O(1)$ lookup for node auto-spillover in non-saturated branches.
-3. **Off-Chain Indexer Verification:** Large tree traversals can be computed off-chain by relayers or web3 clients with zero-knowledge proof or signature validation on-chain to minimize gas consumption.
-
----
-
 ## 3. Financial Flow & P2P Ledger
 
 ### 3.1 100% P2P Allocation Model (Zero Company Deduction)
 
 Altima operates on a **100% Peer-to-Peer decentralized distribution model**. The protocol retains **0% corporate fee**. Every $30 USDT activation fee is immediately routed to active member wallets and rebirth reserves.
-
-```
-       [ 30 USDT Entry Fee ]
-                 |
-   +-------------+-------------+
-   |                           |
-   v                           v
- Direct Referral /         Matrix Depth
- Milestone Pool            Payout Stream
- (e.g., 10 USDT/30 USDT)   (7 Levels Upline)
-```
-
----
-
-### 3.2 30 USDT Entry Breakdown & 3-Direct 100% Fee Recovery Rule
-
-- **Activation Amount:** 30 USDT.
-- **Direct Referral Schedule:**
-  - Default rate: 10 USDT per direct referral.
-  - **Milestone Guarantee:** Upon achieving **3 Direct Referrals**, the contract calculates $3 \times 10\text{ USDT} = 30\text{ USDT}$, resulting in **100% joining fee recovery**.
-  - Subsequent direct referrals continue to yield direct referral rewards to the referrer according to dynamic admin parameters.
-
----
-
-### 3.3 Foundational Matrix Depth Distribution Table (Levels 1–7)
-
-The remaining funds from the 30 USDT activation fee are distributed upline through 7 levels:
-
-| Level | Matrix Capacity | Payout per Fill (USDT) | Level Subtotal (USDT) | Rebirth Deduction (USDT) | Net Member Balance (USDT) |
-|---|---|---|---|---|---|
-| **Level 1** | 3 | $2.00 | $6.00 | $0.00 | $6.00 |
-| **Level 2** | 9 | $2.00 | $18.00 | $0.00 | $18.00 |
-| **Level 3** | 27 | $2.00 | $54.00 | $10.00 | $44.00 (Triggers Rebirth #1) |
-| **Level 4** | 81 | $2.00 | $162.00 | $20.00 | $142.00 (Triggers Rebirth #2) |
-| **Level 5** | 243 | $3.00 | $729.00 | $30.00 | $699.00 (Triggers Rebirth #3) |
-| **Level 6** | 729 | $3.00 | $2,187.00 | $50.00 | $2,137.00 (Triggers Rebirth #4) |
-| **Level 7** | 2,187 | $4.00 | $8,748.00 | $100.00 | $8,648.00 (Graduation Event) |
-| **TOTAL** | **3,279** | -- | **$11,904.00** | **$210.00** | **$11,694.00** |
-
-*Note: Payout amounts and rebirth deductions are dynamically configurable by the administrator.*
-
----
-
-### 3.4 Rebirth & Flywheel Mechanics
-
-1. **Self-Funding Mechanism:** Starting at designated milestone fills (e.g., Level 3 completion), the smart contract deducts a predefined rebirth allocation into `rebirthVaultBalance[user]`.
-2. **Flywheel Position Spawn:** Once the rebirth vault reaches $30\text{ USDT}$, the contract automatically executes `place_matrix_node(user, user.referrer)`, inserting a new parallel node at the bottom of the global matrix tree via BFS spillover.
-3. **Continuous Downline Support:** Rebirth nodes act as fresh active participants in lower tiers, generating payouts for upline members in those tiers and driving continuous momentum.
 
 ---
 
@@ -305,32 +195,44 @@ The remaining funds from the 30 USDT activation fee are distributed upline throu
 
 ### 4.1 Pool Hierarchy & Sequential Progression
 
-Upon completing Level 7 of the foundational matrix, members graduate into cyclical higher-tier Progression Pools:
+Upon completing Level 7 of the foundational matrix, members graduate into cyclical higher-tier Progression Pools starting with the entry **5 USDT Pool**:
 
-$$\text{Foundational 30 USDT Matrix} \xrightarrow{\text{Graduation}} \text{50 USDT Pool} \xrightarrow{\text{Completion}} \text{100 USDT Pool} \xrightarrow{\text{Completion}} \text{200 USDT Pool}$$
+$$\text{Foundational Matrix (30 USDT)} \xrightarrow{\text{Graduation}} \text{5 Pool} \rightarrow \text{10 Pool} \rightarrow \text{30 Pool} \rightarrow \text{50 Pool} \rightarrow \text{100 Pool} \rightarrow \text{200 Pool}$$
 
 ```
 +-----------------------------------------------------------------+
 |                 Foundational Matrix (30 USDT)                   |
-|              (Completes Level 7 - 2,187 nodes)                  |
 +--------------------------------+--------------------------------+
                                  |
                                  v
 +--------------------------------+--------------------------------+
-|                     Progression Tier 1: 50 USDT Pool             |
-|                   (3x2 Matrix - 12 Nodes Capacity)              |
+|                   Entry Pool: 5 USDT Pool                       |
+|                   (3x2 Matrix - 12 Nodes)                       |
 +--------------------------------+--------------------------------+
                                  |
                                  v
 +--------------------------------+--------------------------------+
-|                    Progression Tier 2: 100 USDT Pool            |
-|                   (3x2 Matrix - 12 Nodes Capacity)              |
+|                      10 USDT Pool (3x2)                         |
 +--------------------------------+--------------------------------+
                                  |
                                  v
 +--------------------------------+--------------------------------+
-|                    Progression Tier 3: 200 USDT Pool            |
-|                   (3x2 Matrix - 12 Nodes Capacity)              |
+|                      30 USDT Pool (3x2)                         |
++--------------------------------+--------------------------------+
+                                 |
+                                 v
++--------------------------------+--------------------------------+
+|                      50 USDT Pool (3x2)                         |
++--------------------------------+--------------------------------+
+                                 |
+                                 v
++--------------------------------+--------------------------------+
+|                     100 USDT Pool (3x2)                         |
++--------------------------------+--------------------------------+
+                                 |
+                                 v
++--------------------------------+--------------------------------+
+|                     200 USDT Pool (3x2)                         |
 +-----------------------------------------------------------------+
 ```
 
@@ -340,26 +242,12 @@ $$\text{Foundational 30 USDT Matrix} \xrightarrow{\text{Graduation}} \text{50 US
 
 Each progression pool operates as an accelerated **3x2 Matrix** (3 child nodes at depth 1, 9 child nodes at depth 2 = 12 total nodes):
 
-#### 1. 50 USDT Progression Pool
-- **Entry Fee:** 50 USDT (Auto-rolled from Level 7 payouts or wallet balance).
-- **Depth 1 Payout (3 nodes):** 10 USDT per fill = 30 USDT.
-- **Depth 2 Payout (9 nodes):** 30 USDT per fill = 270 USDT.
-- **Cycle Total Yield:** 300 USDT.
-- **Transition:** 100 USDT auto-allocated to Tier 2 Pool; 200 USDT withdrawable net profit.
-
-#### 2. 100 USDT Progression Pool
-- **Entry Fee:** 100 USDT.
-- **Depth 1 Payout (3 nodes):** 20 USDT per fill = 60 USDT.
-- **Depth 2 Payout (9 nodes):** 60 USDT per fill = 540 USDT.
-- **Cycle Total Yield:** 600 USDT.
-- **Transition:** 200 USDT auto-allocated to Tier 3 Pool; 400 USDT withdrawable net profit.
-
-#### 3. 200 USDT Progression Pool
-- **Entry Fee:** 200 USDT.
-- **Depth 1 Payout (3 nodes):** 40 USDT per fill = 120 USDT.
-- **Depth 2 Payout (9 nodes):** 120 USDT per fill = 1,080 USDT.
-- **Cycle Total Yield:** 1,200 USDT.
-- **Re-entry Loop:** 200 USDT auto-recycled into 200 USDT Pool; 1,000 USDT net withdrawable profit per loop.
+1. **5 USDT Entry Pool:** Depth 1 Payout: $1.00 USDT | Depth 2 Payout: $3.00 USDT
+2. **10 USDT Progression Pool:** Depth 1 Payout: $2.00 USDT | Depth 2 Payout: $6.00 USDT
+3. **30 USDT Progression Pool:** Depth 1 Payout: $6.00 USDT | Depth 2 Payout: $18.00 USDT
+4. **50 USDT Progression Pool:** Depth 1 Payout: $10.00 USDT | Depth 2 Payout: $30.00 USDT
+5. **100 USDT Progression Pool:** Depth 1 Payout: $20.00 USDT | Depth 2 Payout: $60.00 USDT
+6. **200 USDT Progression Pool:** Depth 1 Payout: $40.00 USDT | Depth 2 Payout: $120.00 USDT
 
 ---
 
@@ -372,48 +260,7 @@ Each progression pool operates as an accelerated **3x2 Matrix** (3 child nodes a
           v
    [ACTIVE_FOUNDATIONAL]
           |
-          | fillLevel7() && meetsQualificationCriteria()
+          | fillLevel7() / graduate()
           v
-   [QUALIFIED_POOL_50]
-          |
-          | enterPool(POOL_50) [50 USDT]
-          v
-   [ACTIVE_POOL_50]
-          |
-          | completePool(12 nodes)
-          v
-   [QUALIFIED_POOL_100]
-          |
-          | enterPool(POOL_100) [100 USDT]
-          v
-   [ACTIVE_POOL_100]
-          |
-          | completePool(12 nodes)
-          v
-   [QUALIFIED_POOL_200]
-          |
-          | enterPool(POOL_200) [200 USDT]
-          v
-   [ACTIVE_POOL_200] <----+
-          |              | Auto-Recycle
-          | completePool | (200 USDT)
-          +--------------+
+   [ACTIVE_POOL_5] ---> [ACTIVE_POOL_10] ---> [ACTIVE_POOL_30] ---> [ACTIVE_POOL_50] ---> [ACTIVE_POOL_100] ---> [ACTIVE_POOL_200]
 ```
-
-#### State Transition Rules:
-1. `UNINITIALIZED -> ACTIVE_FOUNDATIONAL`: Triggered when `msg.sender` transfers 30 USDT to `AltimaCore`.
-2. `ACTIVE_FOUNDATIONAL -> QUALIFIED_POOL_50`: Triggered when member completes node allocations in Level 7 of the foundational matrix.
-3. `QUALIFIED_POOL_50 -> ACTIVE_POOL_50`: Execution of `PoolEngine.enterPool(POOL_50)`.
-4. `ACTIVE_POOL_50 -> QUALIFIED_POOL_100`: Reaching 12 downline node fills in Pool 50.
-5. `QUALIFIED_POOL_100 -> ACTIVE_POOL_100`: Auto-transition or user approval to deduct 100 USDT entry fee into Pool 100.
-6. `ACTIVE_POOL_100 -> QUALIFIED_POOL_200`: Reaching 12 downline node fills in Pool 100.
-7. `QUALIFIED_POOL_200 -> ACTIVE_POOL_200`: Auto-transition into Tier 3 Pool.
-8. `ACTIVE_POOL_200 -> ACTIVE_POOL_200`: Permanent cyclical loop upon completion of Tier 3 matrix.
-
----
-
-### 4.4 Financial Safeguards & Audit Verification Rules
-
-1. **Reentrancy Protection:** All financial state modifications use OpenZeppelin `ReentrancyGuard` with Checks-Effects-Interactions design pattern.
-2. **Zero Insolvent State Guarantee:** The total payout across direct bonuses, level depths, and rebirth reserves is mathematically clamped to exactly 100% of the activation fee.
-3. **P2P Push-Withdraw Balance Pattern:** Funds are routed into user-dedicated balance mappings (`withdrawableBalance[user]`), enabling pull-withdrawals to avoid DoS attacks.
