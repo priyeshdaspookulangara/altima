@@ -5,7 +5,7 @@
 
 ### Executive Overview
 
-**Altima** is a decentralized, peer-to-peer (P2P) direct-selling referral ecosystem built on the Binance Smart Chain (BSC - BEP-20 standard). It utilizes a dynamic administrative architecture powering a forced 3x3 Breadth-First Search (BFS) spillover matrix and a multi-tiered cyclical progression pool sequence starting with the entry **5 USDT Pool** followed by **10 USDT, 30 USDT, 50 USDT, 100 USDT, and 200 USDT pools**.
+**Altima** is a decentralized, peer-to-peer (P2P) direct-selling referral ecosystem built on the Binance Smart Chain (BSC - BEP-20 standard). It utilizes a dynamic administrative architecture powering a forced 3x3 Breadth-First Search (BFS) spillover matrix and a multi-tiered cyclical progression pool sequence starting with the entry **5 USDT Pool** followed by **10, 30, 50, 100, 200, 500, 1000, and 2000 USDT pools**.
 
 This document outlines the end-to-end technical specification, smart contract state structures, placement algorithms, financial ledger equations, and state machine transition rules for Altima.
 
@@ -19,7 +19,7 @@ The system is modularly organized into five core smart contract modules:
 1. `AltimaGovernance.sol`: Handles administrative governance, access control, and dynamic parameter configuration.
 2. `AltimaCore.sol`: Coordinates registration, direct referrals, and user identity mappings.
 3. `MatrixEngine.sol`: Executes the forced 3x3 BFS spillover placement algorithm across 7 levels.
-4. `PoolEngine.sol`: Manages cyclical progression pools (5, 10, 30, 50, 100, 200 USDT).
+4. `PoolEngine.sol`: Manages cyclical progression pools (5, 10, 30, 50, 100, 200, 500, 1000, 2000 USDT).
 5. `VaultEngine.sol`: Handles P2P fund routing, instant direct wallet transfers, and rebirth funding pools with 0% corporate retention.
 
 ```
@@ -37,7 +37,7 @@ The system is modularly organized into five core smart contract modules:
                   v                                 v
 +-----------------+-----------------+     +---------+-------------------+
 |          MatrixEngine             |     |           PoolEngine            |
-|  (3x3 BFS Spillover across 7 Lvs) |     | (Progression Pools: 5..200 USDT)  |
+|  (3x3 BFS Spillover across 7 Lvs) |     | (Progression Pools: 5..2000 USDT) |
 +-----------------+-----------------+     +---------+-------------------+
                   |                                 |
                   +-----------------+---------------+
@@ -58,7 +58,7 @@ The administrator possesses dynamic control to calibrate reward structures durin
 #### Admin-Configurable Variables:
 - **`directBonusSchedule`**: Direct referral payouts per direct signup or milestone achievement (e.g., 3 direct signups = 30 USDT fee recovery).
 - **`matrixLevelRewards[7]`**: Depth payout amounts/percentages for matrix Levels 1 through 7 in the 30 USDT foundational matrix.
-- **`poolConfig[6]`**: Parameters for Progression Pools (5 USDT, 10 USDT, 30 USDT, 50 USDT, 100 USDT, 200 USDT), including depth payouts, node capacities, and graduation thresholds.
+- **`poolConfig[9]`**: Parameters for Progression Pools (5, 10, 30, 50, 100, 200, 500, 1000, 2000 USDT), including depth payouts, node capacities, and graduation thresholds.
 - **`rebirthThresholds`**: Milestone payout/level triggers that automatically allocate liquidity into parallel rebirth nodes.
 
 ---
@@ -75,7 +75,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract AltimaStorage is Ownable, ReentrancyGuard {
 
-    enum PoolTier { NONE, POOL_5, POOL_10, POOL_30, POOL_50, POOL_100, POOL_200 }
+    enum PoolTier { NONE, POOL_5, POOL_10, POOL_30, POOL_50, POOL_100, POOL_200, POOL_500, POOL_1000, POOL_2000 }
 
     struct User {
         uint256 id;
@@ -104,7 +104,7 @@ contract AltimaStorage is Ownable, ReentrancyGuard {
     }
 
     struct PoolConfig {
-        uint256 entryFee;         // 5, 10, 30, 50, 100, or 200 USDT
+        uint256 entryFee;         // 5, 10, 30, 50, 100, 200, 500, 1000, or 2000 USDT
         uint256 maxDepth;         // Pool matrix depth (3x2)
         uint256 d1Payout;         // Depth 1 payout
         uint256 d2Payout;         // Depth 2 payout
@@ -167,20 +167,6 @@ The foundational matrix is a **Forced 3x3 Matrix** structured across **7 Levels*
   - Level 7: $3^7 = 2,187$ nodes
   - **Total Tree Capacity:** $3 + 9 + 27 + 81 + 243 + 729 + 2,187 = 3,279$ nodes.
 
-When a user joins or triggers a rebirth, the placement engine conducts a **Breadth-First Search (BFS)** starting from the referrer's primary node down to Level 7. The system scans level-by-level, left-to-right, to find the first node with fewer than 3 children (`childNodeIds.length < 3`).
-
-```
-                   [ Referrer Node ] (Level 0)
-                          |
-        +-----------------+-----------------+
-        |                 |                 |
-    [ Child 1 ]       [ Child 2 ]       [ Child 3 ] (Level 1)
-        |                 |                 |
-     +--+--+           +--+--+           +--+--+
-     |  |  |           |  |  |           |  |  |
-    (1)(2)(3)         (4)(5)(6)         (7)(8)(9)    (Level 2 - BFS Left-to-Right)
-```
-
 ---
 
 ## 3. Financial Flow & P2P Ledger
@@ -197,7 +183,7 @@ Altima operates on a **100% Peer-to-Peer decentralized distribution model**. The
 
 Upon completing Level 7 of the foundational matrix, members graduate into cyclical higher-tier Progression Pools starting with the entry **5 USDT Pool**:
 
-$$\text{Foundational Matrix (30 USDT)} \xrightarrow{\text{Graduation}} \text{5 Pool} \rightarrow \text{10 Pool} \rightarrow \text{30 Pool} \rightarrow \text{50 Pool} \rightarrow \text{100 Pool} \rightarrow \text{200 Pool}$$
+$$\text{Foundational Matrix (30 USDT)} \xrightarrow{\text{Graduation}} 5 \rightarrow 10 \rightarrow 30 \rightarrow 50 \rightarrow 100 \rightarrow 200 \rightarrow 500 \rightarrow 1000 \rightarrow 2000 \text{ USDT Pools}$$
 
 ```
 +-----------------------------------------------------------------+
@@ -212,27 +198,22 @@ $$\text{Foundational Matrix (30 USDT)} \xrightarrow{\text{Graduation}} \text{5 P
                                  |
                                  v
 +--------------------------------+--------------------------------+
-|                      10 USDT Pool (3x2)                         |
+|          10 -> 30 -> 50 -> 100 -> 200 USDT Pools                |
 +--------------------------------+--------------------------------+
                                  |
                                  v
 +--------------------------------+--------------------------------+
-|                      30 USDT Pool (3x2)                         |
+|                    500 USDT Pool (3x2)                           |
 +--------------------------------+--------------------------------+
                                  |
                                  v
 +--------------------------------+--------------------------------+
-|                      50 USDT Pool (3x2)                         |
+|                   1000 USDT Pool (3x2)                          |
 +--------------------------------+--------------------------------+
                                  |
                                  v
 +--------------------------------+--------------------------------+
-|                     100 USDT Pool (3x2)                         |
-+--------------------------------+--------------------------------+
-                                 |
-                                 v
-+--------------------------------+--------------------------------+
-|                     200 USDT Pool (3x2)                         |
+|                   2000 USDT Pool (3x2)                          |
 +-----------------------------------------------------------------+
 ```
 
@@ -248,6 +229,9 @@ Each progression pool operates as an accelerated **3x2 Matrix** (3 child nodes a
 4. **50 USDT Progression Pool:** Depth 1 Payout: $10.00 USDT | Depth 2 Payout: $30.00 USDT
 5. **100 USDT Progression Pool:** Depth 1 Payout: $20.00 USDT | Depth 2 Payout: $60.00 USDT
 6. **200 USDT Progression Pool:** Depth 1 Payout: $40.00 USDT | Depth 2 Payout: $120.00 USDT
+7. **500 USDT Progression Pool:** Depth 1 Payout: $100.00 USDT | Depth 2 Payout: $300.00 USDT
+8. **1000 USDT Progression Pool:** Depth 1 Payout: $200.00 USDT | Depth 2 Payout: $600.00 USDT
+9. **2000 USDT Progression Pool:** Depth 1 Payout: $400.00 USDT | Depth 2 Payout: $1,200.00 USDT
 
 ---
 
@@ -262,5 +246,5 @@ Each progression pool operates as an accelerated **3x2 Matrix** (3 child nodes a
           |
           | fillLevel7() / graduate()
           v
-   [ACTIVE_POOL_5] ---> [ACTIVE_POOL_10] ---> [ACTIVE_POOL_30] ---> [ACTIVE_POOL_50] ---> [ACTIVE_POOL_100] ---> [ACTIVE_POOL_200]
+   [ACTIVE_POOL_5] -> [ACTIVE_POOL_10] -> [ACTIVE_POOL_30] -> [ACTIVE_POOL_50] -> [ACTIVE_POOL_100] -> [ACTIVE_POOL_200] -> [ACTIVE_POOL_500] -> [ACTIVE_POOL_1000] -> [ACTIVE_POOL_2000]
 ```

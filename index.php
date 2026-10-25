@@ -47,7 +47,7 @@ if (DB_DRIVER === 'sqlite') {
                 <li><strong>100% Fee Recovery:</strong> 3 Direct Referrals = $30 USDT Recovery.</li>
                 <li><strong>Matrix Architecture:</strong> Forced 3x3 BFS Auto-Spillover across 7 Levels.</li>
                 <li><strong>Rebirth Flywheel:</strong> Automated parallel position creation at $30 threshold.</li>
-                <li><strong>Progression Pools:</strong> Cyclical 6-Stage Graduation (5 $\rightarrow$ 10 $\rightarrow$ 30 $\rightarrow$ 50 $\rightarrow$ 100 $\rightarrow$ 200 USDT Pools).</li>
+                <li><strong>Progression Pools:</strong> Sequential 9-Stage Graduation (5 $\rightarrow$ 10 $\rightarrow$ 30 $\rightarrow$ 50 $\rightarrow$ 100 $\rightarrow$ 200 $\rightarrow$ 500 $\rightarrow$ 1000 $\rightarrow$ 2000 USDT Pools).</li>
                 <li><strong>Zero Company Retention:</strong> 100% Peer-to-Peer Liquidity Distribution.</li>
             </ul>
         </div>

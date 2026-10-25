@@ -65,7 +65,7 @@ class PoolEngine {
      * Finds the available parent pool node for a 3x2 matrix using Breadth-First Search (BFS).
      */
     private function findAvailablePoolParent(string $poolTier): ?int {
-        // Fetch active root pool node for this tier that has not completed its 3x2 cycle
+        // Fetch active root pool node for this tier
         $stmt = $this->pdo->prepare("SELECT id FROM pool_nodes WHERE pool_tier = ? AND parent_pool_node_id IS NULL ORDER BY id ASC LIMIT 1");
         $stmt->execute([$poolTier]);
         $rootId = $stmt->fetchColumn();
@@ -102,15 +102,15 @@ class PoolEngine {
     }
 
     /**
-     * Enters a user into a Progression Pool (POOL_5, POOL_10, POOL_30, POOL_50, POOL_100, POOL_200) with 3x2 BFS Placement.
+     * Enters a user into a Progression Pool (POOL_5..POOL_2000) with 3x2 BFS Placement.
      */
     public function enterPool(int $userId, string $poolTier, bool $isRecycle = false): bool {
-        $validTiers = ['POOL_5', 'POOL_10', 'POOL_30', 'POOL_50', 'POOL_100', 'POOL_200'];
+        $validTiers = ['POOL_5', 'POOL_10', 'POOL_30', 'POOL_50', 'POOL_100', 'POOL_200', 'POOL_500', 'POOL_1000', 'POOL_2000'];
         if (!in_array($poolTier, $validTiers)) {
             return false;
         }
 
-        // Check if already in pool tier (unless re-cycling into POOL_200)
+        // Check if already in pool tier (unless re-cycling into final tier)
         if (!$isRecycle) {
             $stmt = $this->pdo->prepare("SELECT id FROM pool_nodes WHERE user_id = ? AND pool_tier = ?");
             $stmt->execute([$userId, $poolTier]);
@@ -206,7 +206,7 @@ class PoolEngine {
         $totalDownline = (int)$stmt->fetchColumn();
 
         if ($totalDownline >= 12) {
-            // Sequential progression sequence: POOL_5 -> POOL_10 -> POOL_30 -> POOL_50 -> POOL_100 -> POOL_200
+            // Sequential progression sequence: 5 -> 10 -> 30 -> 50 -> 100 -> 200 -> 500 -> 1000 -> 2000
             if ($poolTier === 'POOL_5') {
                 $this->enterPool($userId, 'POOL_10');
             } elseif ($poolTier === 'POOL_10') {
@@ -218,8 +218,14 @@ class PoolEngine {
             } elseif ($poolTier === 'POOL_100') {
                 $this->enterPool($userId, 'POOL_200');
             } elseif ($poolTier === 'POOL_200') {
-                // Re-cycle into POOL_200
-                $this->enterPool($userId, 'POOL_200', true);
+                $this->enterPool($userId, 'POOL_500');
+            } elseif ($poolTier === 'POOL_500') {
+                $this->enterPool($userId, 'POOL_1000');
+            } elseif ($poolTier === 'POOL_1000') {
+                $this->enterPool($userId, 'POOL_2000');
+            } elseif ($poolTier === 'POOL_2000') {
+                // Re-cycle into POOL_2000
+                $this->enterPool($userId, 'POOL_2000', true);
             }
         }
     }

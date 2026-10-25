@@ -105,9 +105,9 @@ $stats = $vaultEngine->getSystemFinancialStats();
                 </div>
             <?php endfor; ?>
 
-            <h3>Progression Pools Calibration (5, 10, 30, 50, 100, 200 USDT Pools)</h3>
+            <h3>Progression Pools Calibration (5, 10, 30, 50, 100, 200, 500, 1000, 2000 USDT Pools)</h3>
             <?php
-            $poolTiers = [5, 10, 30, 50, 100, 200];
+            $poolTiers = [5, 10, 30, 50, 100, 200, 500, 1000, 2000];
             foreach ($poolTiers as $pt):
             ?>
                 <div class="form-group">
